@@ -1,54 +1,86 @@
 package mr
 
-import "fmt"
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
 import "log"
 import "net/rpc"
 import "hash/fnv"
 
-
-//
 // Map functions return a slice of KeyValue.
-//
 type KeyValue struct {
 	Key   string
 	Value string
 }
 
-//
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
-//
 func ihash(key string) int {
 	h := fnv.New32a()
 	h.Write([]byte(key))
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-
-//
 // main/mrworker.go calls this function.
-//
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 
 	// Your worker implementation here.
+out:
+	for {
+		response := getTask()
+		if response.MapTask.Id == 666 || response.MapTask.File == "" {
+			LogPrintf("worker end")
+			break out
+		}
+		finishTask(response)
+	}
 
 	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
+	CallExample()
 
 }
 
-//
+func finishTask(mapResponse MapQuestResponse) {
+	args := MapFinishRequest{
+		MapTaskId: mapResponse.MapTask.Id,
+	}
+	reply := MapFinishReply{}
+	time.Sleep(time.Duration(rand.Intn(15)) * time.Second)
+	ok := call("Coordinator.MapFinish", &args, &reply)
+	if ok {
+		// reply.Y should be 100.
+		fmt.Println("map finished")
+	} else {
+		fmt.Printf("call failed!\n")
+	}
+}
+
+func getTask() MapQuestResponse {
+	args := ExampleArgs{}
+	reply := MapQuestResponse{}
+	ok := call("Coordinator.MapRequest", &args, &reply)
+	if ok {
+		// reply.Y should be 100.
+		fmt.Printf("reply.Filename %v\n", reply.MapTask)
+		return reply
+	} else {
+		fmt.Printf("call failed!\n")
+		return MapQuestResponse{}
+	}
+}
+
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.
-//
 func CallExample() {
 
 	// declare an argument structure.
 	args := ExampleArgs{}
 
-	// fill in the argument(s).
+	// fill in the argument	(s).
 	args.X = 99
 
 	// declare a reply structure.
@@ -67,11 +99,9 @@ func CallExample() {
 	}
 }
 
-//
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
-//
 func call(rpcname string, args interface{}, reply interface{}) bool {
 	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
 	sockname := coordinatorSock()
